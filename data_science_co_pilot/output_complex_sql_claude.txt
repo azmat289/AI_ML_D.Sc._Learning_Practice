@@ -1,0 +1,409 @@
+🧪 COMPLEX SQL QUERY TEST SUITE WITH CLAUDE claude-sonnet-4-20250514
+============================================================
+
+==================== TEST 1: Window Functions - Ranking ====================
+Query: Show me the top 3 highest paid employees in each department with their salary rank
+--------------------------------------------------------------------------------
+🔹 Generated SQL:
+WITH employee_salary_ranks AS (
+    SELECT 
+        e.emp_id,
+        e.first_name,
+        e.last_name,
+        e.email,
+        d.dept_name,
+        d.dept_id,
+        s.amount as current_salary,
+        ROW_NUMBER() OVER (PARTITION BY e.dept_id ORDER BY s.amount DESC) as salary_rank
+    FROM employees e
+    INNER JOIN departments d ON e.dept_id = d.dept_id
+    INNER JOIN (
+        SELECT
+            emp_id,
+            amount,
+            ROW_NUMBER() OVER (PARTITION BY emp_id ORDER BY effective_date DESC) as rn
+        FROM salaries
+    ) s ON e.emp_id = s.emp_id AND s.rn = 1
+)
+SELECT
+    dept_name,
+    salary_rank,
+    first_name,
+    last_name,
+    email,
+    current_salary
+FROM employee_salary_ranks
+WHERE salary_rank <= 3
+ORDER BY dept_name, salary_rank;
+
+📊 Complexity Score: 5.0
+🚀 Features Used: CTE, Window Functions, Subqueries, Multiple JOINs
+💡 Logic: 1. **Inner Subquery**: First, I get the most recent salary for each employee by using `ROW_NUMBER()` partitioned by `emp_id` and ordered by `effective_date DESC` 2. **Main CTE**: Joins employees with departments and their current salaries, then uses `ROW_NUMBER()` window function partitioned by department to rank employees by salary within each department 3. **Final Selection**: Filters for only the top 3 ranked employees per department and orders results by department name and salary rank ## Performance Considerations - **Index Recommendations**: - `CREATE INDEX idx_salaries_emp_effective ON salaries(emp_id, effective_date DESC);` - `CREATE INDEX idx_employees_dept ON employees(dept_id);` - The subquery to get current salaries could be expensive if there are many salary records per employee - Consider if you need all employee details or just key information to reduce data transfer ## Alternative Approaches **Alternative 1: Using RANK() instead of ROW_NUMBER()**
+✅ Executed successfully - 6 rows returned in 0.004s
+📋 Results:
+   Columns: ['dept_name', 'salary_rank', 'first_name', 'last_name', 'email', 'current_salary']
+   ('Engineering', 1, 'Frank', 'Miller', 'frank.m@example.com', Decimal('120000.00'))
+   ('Engineering', 2, 'Alice', 'Johnson', 'alice.j@example.com', Decimal('90000.00'))
+   ('Engineering', 3, 'Bob', 'Smith', 'bob.s@example.com', Decimal('85000.00'))
+   ('Finance', 1, 'Ethan', 'Hunt', 'ethan.h@example.com', Decimal('95000.00'))
+   ('HR', 1, 'Charlie', 'Brown', 'charlie.b@example.com', Decimal('60000.00'))
+   ... and 1 more rows
+
+================================================================================
+
+==================== TEST 2: CTE with Aggregation ====================
+Query: Find departments where the average salary is above the company average, show department name and average salary
+--------------------------------------------------------------------------------
+🔹 Generated SQL:
+WITH company_avg AS (
+    SELECT AVG(s.amount) as avg_company_salary
+    FROM salaries s
+    INNER JOIN employees e ON s.emp_id = e.emp_id
+    WHERE s.effective_date = (
+        SELECT MAX(s2.effective_date) 
+        FROM salaries s2 
+        WHERE s2.emp_id = s.emp_id
+    )
+),
+dept_avg AS (
+    SELECT
+        d.dept_name,
+        AVG(s.amount) as avg_dept_salary
+    FROM departments d
+    INNER JOIN employees e ON d.dept_id = e.dept_id
+    INNER JOIN salaries s ON e.emp_id = s.emp_id
+    WHERE s.effective_date = (
+        SELECT MAX(s2.effective_date)
+        FROM salaries s2
+        WHERE s2.emp_id = s.emp_id
+    )
+    GROUP BY d.dept_id, d.dept_name
+)
+SELECT
+    da.dept_name,
+    ROUND(da.avg_dept_salary, 2) as average_salary
+FROM dept_avg da
+CROSS JOIN company_avg ca
+WHERE da.avg_dept_salary > ca.avg_company_salary
+ORDER BY da.avg_dept_salary DESC;
+
+📊 Complexity Score: 6.0
+🚀 Features Used: CTE, Subqueries, Multiple JOINs, Aggregation
+💡 Logic: 1. **First CTE (company_avg)**: Calculates the overall company average salary using only the most recent salary record for each employee 2. **Second CTE (dept_avg)**: Calculates the average salary for each department, again using only current salaries 3. **Main Query**: Joins the department averages with the company average and filters for departments exceeding the company average 4. **Salary Currency**: The subquery ensures we're using the most recent salary for each employee by selecting the maximum effective_date ## Performance Considerations - **Index Recommendations**: - `CREATE INDEX idx_salaries_emp_effective ON salaries(emp_id, effective_date DESC);` - `CREATE INDEX idx_employees_dept ON employees(dept_id);` - **Subquery Performance**: The correlated subquery for latest salary runs for each salary record, which could be expensive with large datasets - **Multiple Table Scans**: The salaries table is scanned twice (once for company avg, once for dept avg) ## Alternative Approaches **Option 1: Using Window Functions (More Efficient)**
+✅ Executed successfully - 2 rows returned in 0.004s
+📋 Results:
+   Columns: ['dept_name', 'average_salary']
+   ('Engineering', Decimal('98333.33'))
+   ('Finance', Decimal('95000.00'))
+
+================================================================================
+
+==================== TEST 3: Complex Join with Subquery ====================
+Query: List employees whose salary is higher than the average salary of their department, include department name
+--------------------------------------------------------------------------------
+🔹 Generated SQL:
+WITH dept_avg_salaries AS (
+    SELECT
+        e.dept_id,
+        d.dept_name,
+        AVG(s.amount) as avg_dept_salary
+    FROM employees e
+    INNER JOIN departments d ON e.dept_id = d.dept_id
+    INNER JOIN salaries s ON e.emp_id = s.emp_id
+    WHERE s.effective_date = (
+        SELECT MAX(s2.effective_date)
+        FROM salaries s2
+        WHERE s2.emp_id = s.emp_id
+    )
+    GROUP BY e.dept_id, d.dept_name
+),
+current_employee_salaries AS (
+    SELECT
+        e.emp_id,
+        e.first_name,
+        e.last_name,
+        e.dept_id,
+        s.amount as current_salary
+    FROM employees e
+    INNER JOIN salaries s ON e.emp_id = s.emp_id
+    WHERE s.effective_date = (
+        SELECT MAX(s2.effective_date)
+        FROM salaries s2
+        WHERE s2.emp_id = s.emp_id
+    )
+)
+SELECT
+    ces.first_name,
+    ces.last_name,
+    das.dept_name,
+    ces.current_salary,
+    ROUND(das.avg_dept_salary, 2) as dept_avg_salary,
+    ROUND(ces.current_salary - das.avg_dept_salary, 2) as salary_difference
+FROM current_employee_salaries ces
+INNER JOIN dept_avg_salaries das ON ces.dept_id = das.dept_id
+WHERE ces.current_salary > das.avg_dept_salary
+ORDER BY das.dept_name, salary_difference DESC;
+
+📊 Complexity Score: 6.0
+🚀 Features Used: CTE, Subqueries, Multiple JOINs, Aggregation
+💡 Logic: This query uses two CTEs to solve the problem efficiently: 1. **`dept_avg_salaries` CTE**: Calculates the average salary for each department using only the most recent salary records for each employee 2. **`current_employee_salaries` CTE**: Gets each employee's current (most recent) salary 3. **Main Query**: Joins the CTEs to compare individual salaries against department averages and filters for employees earning above their department's average The query handles the fact that employees may have multiple salary records by using a correlated subquery to find the most recent `effective_date` for each employee. ## Performance Considerations 1. **Index Recommendations**: ```sql CREATE INDEX idx_salaries_emp_effective ON salaries(emp_id, effective_date DESC); CREATE INDEX idx_employees_dept ON employees(dept_id); ``` 2. **Correlated Subquery**: The subquery to find the latest salary is executed for each row, which could be expensive with large datasets 3. **Multiple Table Joins**: The query joins multiple tables, so proper indexing on foreign keys is crucial ## Alternative Approaches ### Alternative 1: Using Window Functions (More Efficient)
+✅ Executed successfully - 1 rows returned in 0.005s
+📋 Results:
+   Columns: ['first_name', 'last_name', 'dept_name', 'current_salary', 'dept_avg_salary', 'salary_difference']
+   ('Frank', 'Miller', 'Engineering', Decimal('120000.00'), Decimal('98333.33'), Decimal('21666.67'))
+
+================================================================================
+
+==================== TEST 4: Time-based Analysis ====================
+Query: Show salary trends by year - total salary cost per department for each year employees were hired
+--------------------------------------------------------------------------------
+🔹 Generated SQL:
+SELECT 
+    d.dept_name,
+    EXTRACT(YEAR FROM e.hire_date) as hire_year,
+    COUNT(DISTINCT e.emp_id) as employees_hired,
+    SUM(s.amount) as total_salary_cost,
+    ROUND(AVG(s.amount), 2) as avg_salary,
+    ROUND(SUM(s.amount) / COUNT(DISTINCT e.emp_id), 2) as avg_cost_per_employee
+FROM employees e
+INNER JOIN departments d ON e.dept_id = d.dept_id
+INNER JOIN salaries s ON e.emp_id = s.emp_id
+WHERE s.effective_date = (
+    SELECT MAX(s2.effective_date)
+    FROM salaries s2
+    WHERE s2.emp_id = s.emp_id
+)
+GROUP BY d.dept_name, EXTRACT(YEAR FROM e.hire_date)
+ORDER BY d.dept_name, hire_year;
+
+📊 Complexity Score: 4.0
+🚀 Features Used: Subqueries, Multiple JOINs, Aggregation
+💡 Logic: **First Query:** - Extracts the hire year from employee hire dates - Groups employees by department and hire year - Uses a correlated subquery to get the most recent salary for each employee - Calculates total salary cost, average salary, and cost per employee for each department-year combination **Second Query (Advanced):** - Uses a CTE to identify the latest salary record for each employee using window functions - Adds year-over-year trend analysis with LAG function to show previous year costs - Calculates percentage change in salary costs between consecutive years - Provides more comprehensive trend analysis ## Performance Considerations: 1. **Index Recommendations:** ```sql CREATE INDEX idx_employees_hire_date ON employees(hire_date); CREATE INDEX idx_salaries_emp_effective ON salaries(emp_id, effective_date DESC); CREATE INDEX idx_employees_dept_id ON employees(dept_id); ``` 2. **Performance Notes:** - The correlated subquery in the first approach may be slower for large datasets - The window function approach (second query) is generally more efficient - Consider partitioning the salaries table by year if it's very large ## Alternative Approaches: 1. **Using DISTINCT ON (PostgreSQL-specific):**
+✅ Executed successfully - 6 rows returned in 0.003s
+📋 Results:
+   Columns: ['dept_name', 'hire_year', 'employees_hired', 'total_salary_cost', 'avg_salary', 'avg_cost_per_employee']
+   ('Engineering', Decimal('2017'), 1, Decimal('120000.00'), Decimal('120000.00'), Decimal('120000.00'))
+   ('Engineering', Decimal('2019'), 1, Decimal('85000.00'), Decimal('85000.00'), Decimal('85000.00'))
+   ('Engineering', Decimal('2020'), 1, Decimal('90000.00'), Decimal('90000.00'), Decimal('90000.00'))
+   ('Finance', Decimal('2022'), 1, Decimal('95000.00'), Decimal('95000.00'), Decimal('95000.00'))
+   ('HR', Decimal('2021'), 1, Decimal('60000.00'), Decimal('60000.00'), Decimal('60000.00'))
+   ... and 1 more rows
+
+================================================================================
+
+==================== TEST 5: Advanced Analytics ====================
+Query: Calculate running total of salary costs by department, ordered by hire date, with percentage of total company cost
+--------------------------------------------------------------------------------
+🔹 Generated SQL:
+WITH salary_data AS (
+    -- Get current salary for each employee with department info
+    SELECT DISTINCT
+        e.emp_id,
+        e.first_name,
+        e.last_name,
+        e.hire_date,
+        d.dept_id,
+        d.dept_name,
+        FIRST_VALUE(s.amount) OVER (
+            PARTITION BY e.emp_id
+            ORDER BY s.effective_date DESC
+        ) AS current_salary
+    FROM employees e
+    INNER JOIN departments d ON e.dept_id = d.dept_id
+    INNER JOIN salaries s ON e.emp_id = s.emp_id
+),
+department_totals AS (
+    -- Calculate running totals by department and total company cost
+    SELECT
+        emp_id,
+        first_name,
+        last_name,
+        hire_date,
+        dept_id,
+        dept_name,
+        current_salary,
+        SUM(current_salary) OVER (
+            PARTITION BY dept_id
+            ORDER BY hire_date, emp_id
+            ROWS UNBOUNDED PRECEDING
+        ) AS running_dept_total,
+        SUM(current_salary) OVER () AS total_company_cost
+    FROM salary_data
+)
+SELECT
+    dept_name,
+    first_name,
+    last_name,
+    hire_date,
+    current_salary,
+    running_dept_total,
+    ROUND(
+        (running_dept_total / total_company_cost * 100), 2
+    ) AS pct_of_total_company_cost
+FROM department_totals
+ORDER BY dept_name, hire_date, emp_id;
+
+📊 Complexity Score: 5.0
+🚀 Features Used: CTE, Window Functions, Multiple JOINs, Aggregation
+💡 Logic: 1. **First CTE (salary_data)**: Retrieves the most recent salary for each employee using `FIRST_VALUE()` window function, along with their department information and hire date. 2. **Second CTE (department_totals)**: Calculates the running total of salary costs within each department, ordered by hire date. Also computes the total company salary cost for percentage calculations. 3. **Final SELECT**: Presents the results with the running department totals and calculates what percentage each running total represents of the entire company's salary costs. ## Performance Considerations 1. **Index Recommendations**: ```sql CREATE INDEX idx_salaries_emp_effective ON salaries(emp_id, effective_date DESC); CREATE INDEX idx_employees_dept_hire ON employees(dept_id, hire_date, emp_id); ``` 2. **Potential Issues**: - The query scans the entire salaries table for each employee - Multiple window functions may require additional sorting operations - `DISTINCT` in the first CTE could be expensive with large datasets ## Alternative Approaches ### Alternative 1: Using Lateral Join (potentially more efficient)
+✅ Executed successfully - 6 rows returned in 0.004s
+📋 Results:
+   Columns: ['dept_name', 'first_name', 'last_name', 'hire_date', 'current_salary', 'running_dept_total', 'pct_of_total_company_cost']
+   ('Engineering', 'Frank', 'Miller', datetime.date(2017, 6, 1), Decimal('120000.00'), Decimal('120000.00'), Decimal('22.86'))
+   ('Engineering', 'Bob', 'Smith', datetime.date(2019, 3, 22), Decimal('85000.00'), Decimal('205000.00'), Decimal('39.05'))
+   ('Engineering', 'Alice', 'Johnson', datetime.date(2020, 1, 15), Decimal('90000.00'), Decimal('295000.00'), Decimal('56.19'))
+   ('Finance', 'Ethan', 'Hunt', datetime.date(2022, 2, 14), Decimal('95000.00'), Decimal('95000.00'), Decimal('18.10'))
+   ('HR', 'Charlie', 'Brown', datetime.date(2021, 7, 10), Decimal('60000.00'), Decimal('60000.00'), Decimal('11.43'))
+   ... and 1 more rows
+
+================================================================================
+
+==================== TEST 6: Hierarchical Query Simulation ====================
+Query: Find all employees hired in the same year as the highest paid employee, group by department
+--------------------------------------------------------------------------------
+🔹 Generated SQL:
+WITH highest_paid_employee AS (
+    SELECT
+        e.emp_id,
+        e.hire_date,
+        EXTRACT(YEAR FROM e.hire_date) as hire_year,
+        s.amount
+    FROM employees e
+    JOIN salaries s ON e.emp_id = s.emp_id
+    WHERE s.effective_date = (
+        SELECT MAX(effective_date)
+        FROM salaries s2
+        WHERE s2.emp_id = e.emp_id
+    )
+    ORDER BY s.amount DESC
+    LIMIT 1
+),
+target_year AS (
+    SELECT hire_year
+    FROM highest_paid_employee
+)
+SELECT
+    d.dept_name,
+    d.dept_id,
+    COUNT(*) as employee_count,
+    STRING_AGG(
+        e.first_name || ' ' || e.last_name,
+        ', ' ORDER BY e.last_name, e.first_name
+    ) as employees,
+    STRING_AGG(
+        CAST(s.amount AS VARCHAR),
+        ', ' ORDER BY e.last_name, e.first_name
+    ) as current_salaries
+FROM employees e
+JOIN departments d ON e.dept_id = d.dept_id
+JOIN salaries s ON e.emp_id = s.emp_id
+CROSS JOIN target_year ty
+WHERE EXTRACT(YEAR FROM e.hire_date) = ty.hire_year
+    AND s.effective_date = (
+        SELECT MAX(effective_date)
+        FROM salaries s2
+        WHERE s2.emp_id = e.emp_id
+    )
+GROUP BY d.dept_id, d.dept_name
+ORDER BY d.dept_name;
+
+📊 Complexity Score: 6.0
+🚀 Features Used: CTE, Subqueries, Multiple JOINs, Aggregation
+💡 Logic: 1. **First CTE (`highest_paid_employee`)**: Identifies the highest paid employee by joining employees with their most recent salary records, then ordering by salary amount descending and taking the top result. 2. **Second CTE (`target_year`)**: Extracts just the hire year from the highest paid employee for cleaner referencing. 3. **Main Query**: Finds all employees hired in the same year as the highest paid employee, joins with departments and current salaries, then groups by department to show: - Department name and ID - Count of employees hired in that year - Concatenated list of employee names - Their current salaries ## Performance Considerations - **Salary History Lookup**: The correlated subquery to find the most recent salary for each employee could be expensive. Consider creating a view or materialized view for "current salaries" - **Indexing Recommendations**: ```sql CREATE INDEX idx_salaries_emp_effective ON salaries(emp_id, effective_date DESC); CREATE INDEX idx_employees_hire_year ON employees(EXTRACT(YEAR FROM hire_date)); ``` - **Date Extraction**: The `EXTRACT(YEAR FROM hire_date)` function prevents index usage on hire_date ## Alternative Approaches ### Alternative 1: More Efficient with Window Functions
+✅ Executed successfully - 1 rows returned in 0.009s
+📋 Results:
+   Columns: ['dept_name', 'dept_id', 'employee_count', 'employees', 'current_salaries']
+   ('Engineering', 1, 1, 'Frank Miller', '120000.00')
+
+================================================================================
+
+==================== TEST 7: Complex Conditional Logic ====================
+Query: Categorize employees as 'Senior' (>3 years), 'Mid-level' (1-3 years), 'Junior' (<1 year) based on hire date, show salary statistics for each category by department
+--------------------------------------------------------------------------------
+🔹 Generated SQL:
+WITH employee_categories AS (
+    SELECT
+        e.emp_id,
+        e.first_name,
+        e.last_name,
+        e.hire_date,
+        e.dept_id,
+        d.dept_name,
+        CASE
+            WHEN CURRENT_DATE - e.hire_date > INTERVAL '3 years' THEN 'Senior'
+            WHEN CURRENT_DATE - e.hire_date >= INTERVAL '1 year' THEN 'Mid-level'
+            ELSE 'Junior'
+        END AS experience_category,
+        -- Get the most recent salary for each employee
+        s.amount as current_salary
+    FROM employees e
+    INNER JOIN departments d ON e.dept_id = d.dept_id
+    LEFT JOIN LATERAL (
+        SELECT amount
+        FROM salaries s2
+        WHERE s2.emp_id = e.emp_id
+        ORDER BY s2.effective_date DESC
+        LIMIT 1
+    ) s ON true
+),
+salary_statistics AS (
+    SELECT
+        dept_name,
+        experience_category,
+        COUNT(*) as employee_count,
+        ROUND(AVG(current_salary), 2) as avg_salary,
+        ROUND(MIN(current_salary), 2) as min_salary,
+        ROUND(MAX(current_salary), 2) as max_salary,
+        ROUND(STDDEV(current_salary), 2) as salary_stddev,
+        ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY current_salary), 2) as median_salary
+    FROM employee_categories
+    WHERE current_salary IS NOT NULL
+    GROUP BY dept_name, experience_category
+)
+SELECT
+    dept_name,
+    experience_category,
+    employee_count,
+    avg_salary,
+    min_salary,
+    max_salary,
+    median_salary,
+    salary_stddev,
+    -- Calculate percentage of department employees in this category
+    ROUND(
+        100.0 * employee_count / SUM(employee_count) OVER (PARTITION BY dept_name),
+        1
+    ) as pct_of_dept
+FROM salary_statistics
+ORDER BY
+    dept_name,
+    CASE experience_category
+        WHEN 'Senior' THEN 1
+        WHEN 'Mid-level' THEN 2
+        WHEN 'Junior' THEN 3
+    END;
+
+📊 Complexity Score: 6.0
+🚀 Features Used: CTE, Subqueries, Multiple JOINs, Aggregation, Conditional Logic
+💡 Logic: 1. **First CTE (`employee_categories`)**: - Categorizes employees based on their tenure using `CASE` statement with date intervals - Uses `LATERAL JOIN` to get the most recent salary for each employee efficiently - Joins with departments to get department information 2. **Second CTE (`salary_statistics`)**: - Calculates comprehensive salary statistics for each department-category combination - Includes count, average, min, max, standard deviation, and median salary - Filters out employees without salary data 3. **Final SELECT**: - Adds percentage calculation showing what portion of each department each category represents ## Performance Considerations 1. **Index Recommendations**: ```sql CREATE INDEX idx_employees_hire_date ON employees(hire_date); CREATE INDEX idx_salaries_emp_effective ON salaries(emp_id, effective_date DESC); CREATE INDEX idx_employees_dept_id ON employees(dept_id); ``` 2. **LATERAL JOIN**: More efficient than correlated subqueries for getting the latest salary per employee 3. **Window Functions**: Used efficiently to calculate department percentages without additional joins ## Alternative Approaches ### Alternative 1: Using Window Functions Instead of LATERAL JOIN
+❌ Execution Error: operator does not exist: integer > interval
+LINE 10:             WHEN CURRENT_DATE - e.hire_date > INTERVAL '3 ye...
+                                                     ^
+HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+
+
+================================================================================
+
+🎯 TEST SUMMARY REPORT
+============================================================
+✅ Successful: 6/7
+❌ Failed: 1/7
+📊 Average Complexity Score: 5.33
+
+🏆 Most Complex Query: CTE with Aggregation
+
+❌ Failed Tests:
+   - Complex Conditional Logic: operator does not exist: integer > interval
+LINE 10:             WHEN CURRENT_DATE - e.hire_date > INTERVAL '3 ye...
+                                                     ^
+HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.

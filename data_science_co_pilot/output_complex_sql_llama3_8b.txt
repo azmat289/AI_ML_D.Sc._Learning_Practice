@@ -1,0 +1,297 @@
+🧪 COMPLEX SQL QUERY TEST SUITE WITH LLAMA llama3:8b
+============================================================
+
+==================== TEST 1: Window Functions - Ranking ====================
+Query: Show me the top 3 highest paid employees in each department with their salary rank
+--------------------------------------------------------------------------------
+🔹 Generated SQL:
+WITH ranked_salaries AS (
+  SELECT 
+    e.first_name,
+    e.last_name,
+    s.amount,
+    DENSE_RANK() OVER (PARTITION BY e.dept_id ORDER BY s.amount DESC) AS salary_rank
+  FROM 
+    employees e
+  JOIN
+    salaries s ON e.emp_id = s.emp_id
+)
+SELECT *
+FROM ranked_salaries
+WHERE salary_rank <= 3;
+
+📊 Complexity Score: 4.5
+🚀 Features Used: CTE, Window Functions, Subqueries, Multiple JOINs
+💡 Logic: **Performance considerations:** This query should be efficient as it only joins two tables (`employees` and `salaries`) and uses a window function to perform the ranking. However, if the number of rows is extremely large, consider adding an index on `dept_id` in both tables. **Alternative approaches:** 2. If the performance requirements are very high, we could consider creating a materialized view that pre-computes the ranked salaries and updating it periodically. Let me know if you have any further questions!
+✅ Executed successfully - 6 rows returned in 0.004s
+📋 Results:
+   Columns: ['first_name', 'last_name', 'amount', 'salary_rank']
+   ('Frank', 'Miller', Decimal('120000.00'), 1)
+   ('Alice', 'Johnson', Decimal('90000.00'), 2)
+   ('Bob', 'Smith', Decimal('85000.00'), 3)
+   ('Charlie', 'Brown', Decimal('60000.00'), 1)
+   ('Diana', 'Prince', Decimal('75000.00'), 1)
+   ... and 1 more rows
+
+================================================================================
+
+==================== TEST 2: CTE with Aggregation ====================
+Query: Find departments where the average salary is above the company average, show department name and average salary
+--------------------------------------------------------------------------------
+🔹 Generated SQL:
+WITH dept_avg_sal AS (
+  SELECT
+    d.dept_name,
+    AVG(s.amount) AS avg_salary
+  FROM
+    departments d
+  JOIN
+    salaries s ON d.dept_id = s.emp_id
+  GROUP BY
+    d.dept_name
+)
+SELECT
+  d.dept_name,
+  da.avg_salary
+FROM
+  dept_avg_sal da
+WHERE
+  da.avg_salary > (
+    SELECT AVG(s.amount)
+    FROM salaries s
+  );
+
+📊 Complexity Score: 4.5
+🚀 Features Used: CTE, Subqueries, Multiple JOINs, Aggregation
+💡 Logic: **Performance Considerations**: To improve performance, consider creating an index on the `salaries` table's `emp_id` column and another on the `departments` table's `dept_id` column. Also, if the result set is expected to be large, use a LIMIT clause to reduce data transfer. **Alternative Approaches**: Another way to solve this problem would be to use a single query with a subquery:
+❌ Execution Error: missing FROM-clause entry for table "d"
+LINE 13:   d.dept_name,
+           ^
+
+
+================================================================================
+
+==================== TEST 3: Complex Join with Subquery ====================
+Query: List employees whose salary is higher than the average salary of their department, include department name
+--------------------------------------------------------------------------------
+🔹 Generated SQL:
+WITH avg_salary_per_dept AS (
+  SELECT d.dept_name, AVG(s.amount) AS avg_salary
+  FROM departments d
+  JOIN salaries s ON d.dept_id = s.emp_id
+  GROUP BY d.dept_name
+)
+SELECT e.first_name, e.last_name, s.amount, d.dept_name
+FROM employees e
+JOIN salaries s ON e.emp_id = s.emp_id
+JOIN avg_salary_per_dept ad ON ad dept_name = e.dept_id AND s.amount > ad.avg_salary
+ORDER BY s.amount DESC;
+
+📊 Complexity Score: 5.5
+🚀 Features Used: CTE, Subqueries, Multiple JOINs, Aggregation
+💡 Logic: The query uses a Common Table Expression (CTE) `avg_salary_per_dept` to calculate the average salary for each department. It then joins this CTE with the `employees` and `salaries` tables to find employees whose salary is higher than their department's average salary. **Performance Considerations:** This query should be relatively efficient, as it only requires two joins and a subquery. However, if the `departments`, `employees`, or `salaries` tables are very large, adding an index on `dept_id` in the `employees` table and/or creating an index on `(dept_name, avg_salary)` in the CTE could improve performance. **Alternative Approaches:** An alternative approach would be to use a single subquery instead of the CTE:
+❌ Execution Error: syntax error at or near "dept_name"
+LINE 10: JOIN avg_salary_per_dept ad ON ad dept_name = e.dept_id AND ...
+                                           ^
+
+
+================================================================================
+
+==================== TEST 4: Time-based Analysis ====================
+Query: Show salary trends by year - total salary cost per department for each year employees were hired
+--------------------------------------------------------------------------------
+🔹 Generated SQL:
+WITH 
+  employee_hire_dates AS (
+    SELECT
+      emp_id,
+      hire_date,
+      EXTRACT(YEAR FROM hire_date) AS hire_year
+    FROM
+      employees
+  ),
+
+  salary_trends AS (
+    SELECT
+      e.dept_id,
+      et.hire_year,
+      SUM(s.amount) AS total_salary_cost
+    FROM
+      employee_hire_dates e
+    JOIN
+      salaries s ON e.emp_id = s.emp_id
+    JOIN
+      departments d ON e.dept_id = d.dept_id
+    CROSS JOIN
+      LATERAL (SELECT DISTINCT EXTRACT(YEAR FROM hire_date) AS year FROM employees) et
+    WHERE
+      s.effective_date <= DATE_TRUNC('year', NOW())
+    GROUP BY
+      e.dept_id, et.hire_year
+  )
+
+SELECT
+  dt.dept_name,
+  st.total_salary_cost,
+  st.hire_year
+FROM
+  salary_trends st
+JOIN
+  departments dt ON st.dept_id = dt.dept_id
+ORDER BY
+  st.hire_year;
+
+📊 Complexity Score: 6.0
+🚀 Features Used: CTE, Subqueries, Multiple JOINs, Aggregation
+💡 Logic: The query uses a common table expression (CTE) to generate the year of hire for each employee. Then, it joins this CTE with the salaries table and groups the results by department and year of hire. The query calculates the total salary cost per department for each year employees were hired. **Performance Considerations** This query may benefit from an index on `employees.hire_date` and `salaries.effective_date`. Additionally, consider creating a composite index on `departments.dept_id` and `employees.dept_id` to improve join performance. If the result set is very large, consider using a LIMIT clause to reduce data transfer. **Alternative Approaches**
+❌ Execution Error: column e.dept_id does not exist
+LINE 21:       departments d ON e.dept_id = d.dept_id
+                                ^
+HINT:  Perhaps you meant to reference the column "d.dept_id".
+
+
+================================================================================
+
+==================== TEST 5: Advanced Analytics ====================
+Query: Calculate running total of salary costs by department, ordered by hire date, with percentage of total company cost
+--------------------------------------------------------------------------------
+🔹 Generated SQL:
+WITH salary_running_total AS (
+  SELECT
+    e.dept_id,
+    e.hire_date,
+    SUM(s.amount) OVER (PARTITION BY e.dept_id ORDER BY s.effective_date) AS running_total,
+    (SUM(s.amount) / (SELECT SUM(amount) FROM salaries)) * 100 AS percentage_of_total
+  FROM
+    employees e
+  JOIN
+    salaries s ON e.emp_id = s.emp_id
+)
+SELECT
+  dt.dept_id,
+  dt.hire_date,
+  dt.running_total,
+  dt.percentage_of_total
+FROM
+  salary_running_total dt
+ORDER BY
+  dt.hire_date;
+
+📊 Complexity Score: 4.5
+🚀 Features Used: CTE, Subqueries, Multiple JOINs, Aggregation
+💡 Logic: The query uses a Common Table Expression (CTE) named `salary_running_total` to calculate the running total of salary costs by department. The CTE uses a window function (`SUM OVER`) to partition the data by department and order it by hire date, while also calculating the running total of salaries. The CTE also calculates the percentage of the total company cost for each department. The main query then selects from the `salary_running_total` CTE, ordering the results by hire date. **Performance Considerations** To improve performance, consider creating an index on the `salaries` table's `emp_id` column and another index on the `employees` table's `dept_id` column. This would enable more efficient joins and aggregations. Additionally, if the `salaries` table is very large, you may want to consider using a summary table or materialized view to store the running total calculations, as this could reduce the amount of data being processed in each query. **Alternative Approaches** If you need to calculate the percentage of total company cost separately for each department (i.e., not just the overall company total), you can modify the CTE to use a separate window function calculation for each department. For example:
+❌ Execution Error: column "e.dept_id" must appear in the GROUP BY clause or be used in an aggregate function
+LINE 3:     e.dept_id,
+            ^
+
+
+================================================================================
+
+==================== TEST 6: Hierarchical Query Simulation ====================
+Query: Find all employees hired in the same year as the highest paid employee, group by department
+--------------------------------------------------------------------------------
+🔹 Generated SQL:
+WITH highest_paid_year AS (
+  SELECT EXTRACT(YEAR FROM hire_date) AS hired_year, job_id
+  FROM employees
+  ORDER BY salary DESC
+  LIMIT 1
+),
+same_year_employees AS (
+  SELECT *
+  FROM employees e
+  WHERE EXTRACT(YEAR FROM e.hire_date) = (SELECT hired_year FROM highest_paid_year)
+  GROUP BY e.dept_id
+)
+SELECT sde.dept_name, COUNT(*) AS num_employees
+FROM same_year_employees sde
+JOIN departments d ON sde.dept_id = d.dept_id
+GROUP BY sde.dept_id, sde.dept_name;
+
+📊 Complexity Score: 4.5
+🚀 Features Used: CTE, Subqueries, Multiple JOINs, Aggregation
+💡 Logic: The query uses two common table expressions (CTEs): `highest_paid_year` and `same_year_employees`. The first CTE finds the year of hire for the highest paid employee by ordering employees by salary in descending order and selecting the top 1 row. The second CTE selects all employees hired in the same year as the highest paid employee, grouping them by department. The main query then joins the `same_year_employees` CTE with the `departments` table to get the department name for each group of employees. Finally, it groups the results by department and counts the number of employees in each department. **Performance Considerations** The query may benefit from an index on the `hire_date` column in the `employees` table, as well as an index on the `dept_id` column in the `departments` table. **Alternative Approaches** If you want to find the highest paid employee across all departments, you can modify the first CTE to use a subquery instead of `LIMIT 1`. For example:
+❌ Execution Error: column "salary" does not exist
+LINE 4:   ORDER BY salary DESC
+                   ^
+
+
+================================================================================
+
+==================== TEST 7: Complex Conditional Logic ====================
+Query: Categorize employees as 'Senior' (>3 years), 'Mid-level' (1-3 years), 'Junior' (<1 year) based on hire date, show salary statistics for each category by department
+--------------------------------------------------------------------------------
+🔹 Generated SQL:
+WITH 
+  -- Calculate employee tenure based on hire date
+  employee_tenure AS (
+    SELECT
+      emp_id,
+      DATE_PART('year', CURRENT_DATE - hire_date) AS tenure
+    FROM employees
+  ),
+
+  -- Group employees by department and category (Senior, Mid-level, Junior)
+  categorized_employees AS (
+    SELECT
+      dept_id,
+      CASE WHEN tenure > 3 THEN 'Senior'
+           WHEN tenure BETWEEN 1 AND 3 THEN 'Mid-level'
+           ELSE 'Junior' END AS employee_category
+    FROM employee_tenure
+  )
+
+SELECT
+  c.dept_id,
+  c.employee_category,
+  AVG(s.amount) AS average_salary
+FROM categorized_employees c
+JOIN salaries s ON c.emp_id = s.emp_id
+GROUP BY c.dept_id, c.employee_category
+ORDER BY c.dept_id, c.employee_category;
+
+📊 Complexity Score: 5.5
+🚀 Features Used: CTE, Subqueries, Multiple JOINs, Aggregation, Conditional Logic
+💡 Logic: The query first calculates the tenure of each employee based on their hire date using a common table expression (CTE). Then, it groups employees by department and categorizes them as 'Senior', 'Mid-level', or 'Junior' based on their tenure. Finally, it computes the average salary for each category in each department. **Performance Considerations** * The query assumes that the `hire_date` column is indexed. If not, consider creating an index on this column to improve performance. * The query uses a CTE to calculate employee tenure and then joins with the `salaries` table. This could be optimized by using a window function instead of a subquery. **Alternative Approaches** * Instead of using a CTE to calculate tenure, you could use a window function like `DATE_PART('year', CURRENT_DATE - hire_date) OVER (PARTITION BY emp_id) AS tenure`. * To avoid joining with the `salaries` table, you could use a subquery or derived table to compute average salary for each category in each department. Please note that the query assumes that the `hire_date` column is accurate and does not contain any invalid dates.
+❌ Execution Error: function date_part(unknown, integer) does not exist
+LINE 6:       DATE_PART('year', CURRENT_DATE - hire_date) AS tenure
+              ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+
+
+================================================================================
+
+🎯 TEST SUMMARY REPORT
+============================================================
+✅ Successful: 1/7
+❌ Failed: 6/7
+📊 Average Complexity Score: 4.50
+
+🏆 Most Complex Query: Window Functions - Ranking
+
+❌ Failed Tests:
+   - CTE with Aggregation: missing FROM-clause entry for table "d"
+LINE 13:   d.dept_name,
+           ^
+
+   - Complex Join with Subquery: syntax error at or near "dept_name"
+LINE 10: JOIN avg_salary_per_dept ad ON ad dept_name = e.dept_id AND ...
+                                           ^
+
+   - Time-based Analysis: column e.dept_id does not exist
+LINE 21:       departments d ON e.dept_id = d.dept_id
+                                ^
+HINT:  Perhaps you meant to reference the column "d.dept_id".
+
+   - Advanced Analytics: column "e.dept_id" must appear in the GROUP BY clause or be used in an aggregate function
+LINE 3:     e.dept_id,
+            ^
+
+   - Hierarchical Query Simulation: column "salary" does not exist
+LINE 4:   ORDER BY salary DESC
+                   ^
+
+   - Complex Conditional Logic: function date_part(unknown, integer) does not exist
+LINE 6:       DATE_PART('year', CURRENT_DATE - hire_date) AS tenure
+              ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
