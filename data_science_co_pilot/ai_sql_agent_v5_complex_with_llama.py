@@ -1,4 +1,4 @@
-import load_envs.load_envs as load_envs
+from dotenv import load_dotenv
 import requests
 import psycopg2
 import matplotlib.pyplot as plt
@@ -8,9 +8,12 @@ import re
 import json
 from typing import Dict, List, Tuple, Optional, Any
 from dataclasses import dataclass
-from init_db_complex import DB_CONFIG
 from decimal import Decimal
 import os
+
+load_dotenv(override=True)
+
+from init_db_complex import DB_CONFIG
 
 # =========== Local llama config ==========
 LLM_API_URL = os.getenv("ANTHROPIC_API_KEY")
